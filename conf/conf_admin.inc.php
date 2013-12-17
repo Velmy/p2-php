@@ -137,6 +137,8 @@ include P2_CONFIG_DIR . '/conf_admin_ex.inc.php';
 
 // }}}
 
+$_conf['enable_shirokuma'] = 1; // œID‚Ì‘ã‚í‚è‚Éofflaw2.so‚Ìshiro=kuma‚Å‰ß‹ƒƒO‚ğæ“¾i‚·‚é:1, ‚µ‚È‚¢:0j
+
 /*
  * Local Variables:
  * mode: php

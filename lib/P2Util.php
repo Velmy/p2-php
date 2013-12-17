@@ -2088,6 +2088,22 @@ ERR;
     }
     */
     // }}}
+
+    /**
+     * @access  public
+     * @return  string
+     */
+    function getP2UA($withMonazilla = true)
+    {
+        global $_conf;
+        
+        $p2ua = $_conf['p2uaname'] . '/' . $_conf['p2version'];
+        if ($withMonazilla) {
+            $p2ua = 'Monazilla/1.00' . ' (' . $p2ua . ')';
+        }
+        return $p2ua;
+    }
+
 }
 
 // }}}

@@ -72,23 +72,25 @@ class ThreadRead extends Thread
 
             // 2ch bbspink●読み
             if (P2Util::isHost2chs($this->host) && !empty($_GET['maru'])) {
-                // ログインしてなければ or ログイン後、24時間以上経過していたら自動再ログイン
-                if (!file_exists($_conf['sid2ch_php']) ||
-                    !empty($_REQUEST['relogin2ch']) ||
-                    (filemtime($_conf['sid2ch_php']) < time() - 60*60*24))
-                {
-                    if (!function_exists('login2ch')) {
-                        include P2_LIB_DIR . '/login2ch.inc.php';
-                    }
-                    if (!login2ch()) {
-                        $this->getdat_error_msg_ht .= $this->get2chDatError();
-                        $this->diedat = true;
-                        return false;
+
+                if (!$_conf['enable_shirokuma']) {
+                    // ログインしてなければ or ログイン後、24時間以上経過していたら自動再ログイン
+                    if (
+                        (!file_exists($_conf['sid2ch_php']) || !empty($_REQUEST['relogin2ch']))
+                        or (filemtime($_conf['sid2ch_php']) < time() - 60*60*24)
+                    ) {
+                        require_once P2_LIB_DIR . '/login2ch.func.php';
+                        if (!login2ch()) {
+                            $this->pushDownloadDatErrorMsgHtml($this->get2chDatError());
+                            $this->diedat = true;
+                            return false;
+                        }
                     }
                 }
+                $this->downloadDat2chMaru($_conf['enable_shirokuma'] ? 'shirokuma' : null);
 
-                include $_conf['sid2ch_php'];
-                $this->_downloadDat2chMaru($uaMona, $SID2ch);
+//                include $_conf['sid2ch_php'];
+//                $this->_downloadDat2chMaru($uaMona, $SID2ch);
 
             // 2ch bbspink モリタポ読み
             } elseif (P2Util::isHost2chs($this->host) && !empty($_GET['moritapodat']) &&
@@ -376,7 +378,8 @@ class ThreadRead extends Thread
      * @return bool
      * @see lib/login2ch.inc.php
      */
-    protected function _downloadDat2chMaru($uaMona, $SID2ch)
+//    protected function _downloadDat2chMaru($uaMona, $SID2ch)
+    function downloadDat2chMaru($type = null)
     {
         global $_conf;
 
@@ -384,18 +387,32 @@ class ThreadRead extends Thread
             return false;
         }
 
-        $method = 'GET';
-
-        //  GET /test/offlaw.cgi?bbs=板名&key=スレッド番号&sid=セッションID HTTP/1.1
-        $url = "http://{$this->host}/test/offlaw.cgi/{$this->bbs}/{$this->key}/?raw=0.0&sid=";
-        $url .= rawurlencode($SID2ch);
-
-        $purl = parse_url($url); // URL分解
-        if (isset($purl['query'])) { // クエリー
-            $purl['query'] = '?'.$purl['query'];
+        $p2ua = null;
+        
+        // 2013/10/11 http://qb5.2ch.net/test/read.cgi/operate/1381326468/76
+        if ($type == 'shirokuma') {
+            $p2ua = P2Util::getP2UA($withMonazilla = true);
+            $url = sprintf('http://%s/test/offlaw2.so?shiro=kuma&bbs=%s&key=%s&sid=ERROR',
+                $this->host, $this->bbs, $this->key
+            );
+            
         } else {
-            $purl['query'] = '';
+            include $_conf['sid2ch_php']; // $uaMona, $SID2ch がセットされる @see login2ch()
+            if (!$uaMona || !$SID2ch) {
+                return false;
+            }
+            
+            $p2ua = sprintf('%s (%s)', $uaMona, P2Util::getP2UA($withMonazilla = false));
+            
+            //  GET /test/offlaw.cgi?bbs=板名&key=スレッド番号&sid=セッションID HTTP/1.1
+            $url = sprintf('http://%s/test/offlaw.cgi/%s/%s/?raw=0.0&sid=%s',
+                $this->host, $this->bbs, $this->key, urlencode($SID2ch)
+            );
         }
+
+        $purl = parse_url($url);
+        
+        $purl['query'] = isset($purl['query']) ? '?' . $purl['query'] : '';
 
         // プロキシ
         if ($_conf['proxy_use']) {
@@ -799,7 +816,11 @@ class ThreadRead extends Thread
         if ($reason === 'datochi' || preg_match($kakosoko_match, $read_response_html, $matches)) {
             $dat_response_status = "このスレッドは過去ログ倉庫に格納されています。";
             //if (file_exists($_conf['idpw2ch_php']) || file_exists($_conf['sid2ch_php'])) {
-                $marutori_ht = " [<a href=\"{$_conf['read_php']}?host={$this->host}&amp;bbs={$this->bbs}&amp;key={$this->key}&amp;ls={$this->ls}&amp;maru=true{$_conf['k_at_a']}\">●IDでrep2に取り込む</a>]";
+            if($_conf['enable_shirokuma']) {
+                $marutori_ht = " [<a href=\"{$_conf['read_php']}?host={$this->host}&amp;bbs={$this->bbs}&amp;key={$this->key}&amp;ls={$this->ls}&amp;maru=true{$_conf['k_at_a']}\">shiro=kumaでrep2に取り込む1</a>]";
+            } else {
+                $marutori_ht = " [<a href=\"{$_conf['read_php']}?host={$this->host}&amp;bbs={$this->bbs}&amp;key={$this->key}&amp;ls={$this->ls}&amp;maru=true{$_conf['k_at_a']}\">●IDでrep2に取り込む1</a>]";
+            }
             //} else {
             //    $marutori_ht = " [<a href=\"login2ch.php\" target=\"subject\">●IDログイン</a>]";
             //}
@@ -860,7 +881,7 @@ EOP;
 
             } elseif (preg_match($waithtml_match, $read_response_html, $matches)) {
                 $dat_response_status = "隊長! スレッドはhtml化されるのを待っているようです。";
-                $marutori_ht = " [<a href=\"{$_conf['read_php']}?host={$this->host}&amp;bbs={$this->bbs}&amp;key={$this->key}&amp;ls={$this->ls}&amp;maru=true{$_conf['k_at_a']}\">●IDでrep2に取り込む</a>]";
+                $marutori_ht = " [<a href=\"{$_conf['read_php']}?host={$this->host}&amp;bbs={$this->bbs}&amp;key={$this->key}&amp;ls={$this->ls}&amp;maru=true{$_conf['k_at_a']}\">●IDでrep2に取り込む2</a>]";
                 $moritori_ht = $this->_generateMoritapoDatLink();
                 $dat_response_msg = "<p>2ch info - 隊長! スレッドはhtml化されるのを待っているようです。{$marutori_ht}{$moritori_ht}</p>";
 
@@ -1492,7 +1513,7 @@ EOP;
         $ls_ht = p2h($this->ls);
 
         $query_ht = p2h("host={$host_en}&bbs={$bbs_en}&key={$key_en}&ls={$ls_en}&maru=true");
-        $marutori_ht = " [<a href=\"{$_conf['read_php']}?{$query_ht}{$_conf['k_at_a']}\">●IDでrep2に取り込む</a>]";
+        $marutori_ht = " [<a href=\"{$_conf['read_php']}?{$query_ht}{$_conf['k_at_a']}\">●IDでrep2に取り込む3</a>]";
 
         if ($hosts = $this->scanOriginalHosts()) {
             $hostlist_ht = '<br>datから他のホスト候補を検出しました。';
